@@ -79,15 +79,28 @@ def fetch(url: str, proxy: str | None, timeout: int = 25) -> str | None:
     import urllib.request
     chain = [proxy] if proxy else []
     chain += [p for p in PROXIES if p and p != proxy]
+    chain.append(None)          # 最后兜底：完全直连
+    errors: list[str] = []
     for px in chain:
+        label = px or "直连"
         try:
             opener = urllib.request.build_opener(
                 urllib.request.ProxyHandler(
                     {} if not px else {"http": px, "https": px}))
             req = urllib.request.Request(url, headers={"User-Agent": UA})
-            return opener.open(req, timeout=timeout).read().decode("utf-8", "ignore")
-        except Exception:
+            resp = opener.open(req, timeout=timeout)
+            body = resp.read().decode("utf-8", "ignore")
+            if "tgme_widget_message" not in body:
+                errors.append(f"{label}: 页面无消息结构（len={len(body)}）")
+                continue
+            return body
+        except Exception as e:
+            errors.append(f"{label}: {type(e).__name__} {str(e)[:80]}")
             continue
+    # 全部通道失败：打印出来，否则云端日志只有「抓到 0 条」无从排查
+    print("  fetch 全部通道失败：")
+    for e in errors:
+        print(f"    - {e}")
     return None
 
 
@@ -127,6 +140,10 @@ def run_once(config: dict, state: dict, verbose: bool = True) -> dict:
     posts = fetch_latest(proxy, pages=config.get("pages", 1))
     if verbose:
         print(f"抓到 {len(posts)} 条帖子")
+    if not posts:
+        # 抓取完全失败（网络问题或频道页面结构变化），必须显式报错，
+        # 否则云端会「成功」地什么都不做，问题被静默吞掉。
+        raise RuntimeError("抓取失败：未取到任何帖子，请检查网络通道或页面结构")
 
     pushed = set(state.get("pushed", []))
     new_kept, new_dropped = [], []
@@ -185,7 +202,11 @@ def main() -> None:
     state = load_state()
 
     if not loop:
-        r = run_once(config, state)
+        try:
+            r = run_once(config, state)
+        except RuntimeError as e:
+            print(f"运行失败：{e}")
+            sys.exit(1)
         print(json.dumps(r, ensure_ascii=False))
         return
 

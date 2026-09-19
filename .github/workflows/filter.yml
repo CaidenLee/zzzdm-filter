@@ -12,6 +12,10 @@ concurrency:
   group: zzzdm-filter
   cancel-in-progress: false
 
+# 需要写权限才能把去重状态提交回仓库
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
