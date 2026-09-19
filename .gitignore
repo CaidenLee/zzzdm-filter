@@ -1,0 +1,20 @@
+# 运行时缓存与原始数据（不需要进仓库）
+__pycache__/
+*.pyc
+output/raw_page.html
+output/last_run.txt
+
+# 调试 / 验收产物（本地留档即可，不进仓库）
+output/run*.txt
+output/real_sample_result.*
+output/verify_detail.json
+output/verify_report.txt
+output/验收报告.html
+
+# 关键：state.json 必须提交（工作流靠它去重），故不能整目录忽略
+# config.json 含 bot token，绝不能提交；仓库里只放 config.example.json
+config.json
+
+# 系统文件
+.DS_Store
+Thumbs.db

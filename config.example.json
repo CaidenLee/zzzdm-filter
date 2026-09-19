@@ -1,0 +1,8 @@
+{
+  "bot_token": "",
+  "chat_id": "",
+  "proxy": "http://127.0.0.1:7890",
+  "pages": 1,
+  "max_push_per_run": 20,
+  "dry_run": true
+}
