@@ -151,7 +151,7 @@ def run_once(config: dict, state: dict, verbose: bool = True) -> dict:
     for p in sorted(posts, key=lambda x: int(x.post_id.split("/")[-1])):
         if p.post_id in pushed:
             continue
-        v = clf.classify(p.title, p.body)
+        v = clf.classify(p.title, p.body, p.price)
         if v.drop:
             new_dropped.append((p, v))
             pushed.add(p.post_id)      # 被剔除的立即记账，无需重试
