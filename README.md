@@ -8,15 +8,24 @@
 ## 它做什么
 
 ```
-源频道 zzzdm → 抓最新帖子（含图片）→ 按黑名单剔除不喜欢的品类 → Bot 完整转发 → 你的私聊
+源频道 zzzdm → 抓最新帖子（含图片）→ 按黑名单剔除不喜欢的品类 → Bot 精简卡片 → 你的私聊
 ```
 
-**完整转发模式**：保留原频道的商品图片和原始文字内容，不做精简。
-你看到的效果和原频道一致，只是内容已经过筛选。
+**精简卡片模式**：每条消息只有三行——标题、价格、原频道链接，正文全部丢弃，
+以缩短消息行高，方便快速扫读。图片保留。
+
+实际效果：
+
+```
+脉动 +电解质运动饮料 西柚口味整箱600ML*15瓶
+¥39.43（91天新低）
+https://t.me/zzzdm/379676
+        ← 上方是原帖商品图
+```
 
 > 技术说明：Bot 无法使用 Telegram 原生转发（没有读取源频道权限，`copyMessage`
 > 会报 `message to copy not found`）。因此采用「下载 telesco CDN 图片 → 用
-> `sendPhoto` 上传，原文作为 caption」，效果等同完整转发。
+> `sendPhoto` 上传，三段式卡片作为 caption」，效果等同转发。
 > 图片下载失败时自动降级为纯文本，不阻塞推送。
 
 ---
@@ -53,7 +62,20 @@
 
 ---
 
-## 部署（GitHub Actions，约 5 分钟）
+## 部署状态
+
+**已上线** → https://github.com/leondellee/zzzdm-filter
+
+- GitHub Actions 定时任务已启用，每 5 分钟自动运行
+- Secrets（`TG_BOT_TOKEN` / `TG_CHAT_ID`）已配置
+- 去重状态 `output/state.json` 自动提交回仓库
+- **本机不需要开机，也不消耗任何 token**
+
+查看运行记录：仓库 → Actions 标签页。
+
+---
+
+## 从零部署（如需重来）
 
 ### 第 1 步：创建 Bot
 
@@ -77,12 +99,11 @@ python tools/setup_bot.py <你的BOT_TOKEN>
 ### 第 3 步：推到 GitHub
 
 ```bash
-git init
-git add .
-git commit -m "init"
-git remote add origin <你的仓库地址>
-git push -u origin main
+python tools/deploy.py https://github.com/<用户名>/zzzdm-filter.git
 ```
+
+脚本会初始化仓库、校验 `config.json` 已被忽略（防 token 泄露）、提交并推送，
+最后把要填的 Secrets 值打印出来。
 
 ### 第 4 步：填两个 Secrets
 
@@ -100,6 +121,10 @@ Actions 标签页 → 若提示则点「I understand my workflows, go ahead and 
 
 **完成。** 之后每 5 分钟自动检查一次，有新帖且通过筛选就推给你。
 
+> 两个易踩的坑：
+> 1. 工作流必须有 `permissions: contents: write`，否则回写 state 时会 403。
+> 2. 抓取完全失败时脚本会**报错退出**（而不是静默空跑），便于在 Actions 里发现问题。
+
 ---
 
 ## 本地测试（可选）
@@ -111,7 +136,7 @@ python src/service.py
 # 单条帖子判定
 python -c "import sys; sys.path.insert(0,'src'); from classifier import Classifier; c=Classifier(); print(c.classify('伊利 中老年高钙奶粉800g'))"
 
-# 回归测试（38 条边界用例）
+# 回归测试（95 条边界用例）
 python tests/test_regression.py
 
 # 抓真实样本跑判定
@@ -143,13 +168,15 @@ zzzdm-filter/
 │   ├── notifier.py      精简卡片渲染 + TG 推送
 │   └── service.py       主流程（抓 → 筛 → 推）
 ├── tools/
-│   └── setup_bot.py     首次配置助手
+│   ├── setup_bot.py     首次配置助手
+│   ├── deploy.py        一键推 GitHub
+│   └── build_report.py  生成验收报告
 ├── tests/
-│   ├── test_regression.py     38 条边界回归测试
+│   ├── test_regression.py     95 条边界回归测试
 │   ├── verify_samples.py      原始 20 条人工标注验证
 │   └── crawl_and_classify.py  真实样本批量判定
 ├── .github/workflows/filter.yml
-└── config.json          本地配置（token/chat_id/代理）
+└── config.json          本地配置（token/chat_id/代理，已 gitignore）
 ```
 
 ---
