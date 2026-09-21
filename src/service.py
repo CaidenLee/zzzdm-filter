@@ -45,14 +45,20 @@ CONFIG_PATH = ROOT / "config.json"
 
 def load_config() -> dict:
     if CONFIG_PATH.exists():
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    return {
-        "bot_token": os.environ.get("TG_BOT_TOKEN", ""),
-        "chat_id": os.environ.get("TG_CHAT_ID", ""),
-        "proxy": os.environ.get("TG_PROXY", ""),
-        "max_push_per_run": 20,
-        "dry_run": False,
-    }
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    else:
+        cfg = {}
+    # 飞书自建应用推送配置（优先级高于 Telegram）
+    cfg.setdefault("feishu_app_id", os.environ.get("FEISHU_APP_ID", ""))
+    cfg.setdefault("feishu_app_secret", os.environ.get("FEISHU_APP_SECRET", ""))
+    cfg.setdefault("feishu_chat_id", os.environ.get("FEISHU_CHAT_ID", ""))
+    # Telegram 推送配置
+    cfg.setdefault("bot_token", os.environ.get("TG_BOT_TOKEN", ""))
+    cfg.setdefault("chat_id", os.environ.get("TG_CHAT_ID", ""))
+    cfg.setdefault("proxy", os.environ.get("TG_PROXY", ""))
+    cfg.setdefault("max_push_per_run", 20)
+    cfg.setdefault("dry_run", False)
+    return cfg
 
 
 def load_state() -> dict:
@@ -164,13 +170,29 @@ def run_once(config: dict, state: dict, verbose: bool = True) -> dict:
             print(f"    ✗ {p.title[:44]} ← {v.category}｜{v.matched}")
 
     sent = 0
-    if not dry and token and chat_id:
+    # 推送路由：飞书优先，其次 Telegram
+    feishu_ready = (config.get("feishu_app_id") and config.get("feishu_app_secret")
+                    and config.get("feishu_chat_id"))
+    tg_ready = bool(token and chat_id)
+
+    if not dry and (feishu_ready or tg_ready):
+        if feishu_ready:
+            from notifier_feishu import FeishuNotifier
+            feishu = FeishuNotifier(
+                config["feishu_app_id"], config["feishu_app_secret"])
+            receive_id = config["feishu_chat_id"]
+            print("  推送通道：飞书自建应用")
+        else:
+            print("  推送通道：Telegram Bot")
+
         for p, v in new_kept[:cap]:
-            ok = send_post(token, chat_id, p,
-                           proxy=proxy if proxy else None,
-                           with_photo=config.get("with_photo", True))
+            if feishu_ready:
+                ok = feishu.send_post(receive_id, p)
+            else:
+                ok = send_post(token, chat_id, p,
+                               proxy=proxy if proxy else None,
+                               with_photo=config.get("with_photo", True))
             if ok:
-                # 关键：只有发送成功才记账。否则被限流截断的帖子会永久丢失
                 pushed.add(p.post_id)
                 sent += 1
             else:
@@ -182,8 +204,8 @@ def run_once(config: dict, state: dict, verbose: bool = True) -> dict:
             if new_kept:
                 from notifier import build_caption
                 print(build_caption(new_kept[0][0])[:400])
-        elif not token or not chat_id:
-            print("缺少 bot_token 或 chat_id，跳过推送")
+        elif not feishu_ready and not tg_ready:
+            print("缺少推送凭证（飞书或 Telegram），跳过推送")
 
     state["pushed"] = list(pushed)
     if posts:
