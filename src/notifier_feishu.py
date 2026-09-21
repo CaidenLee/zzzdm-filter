@@ -86,7 +86,14 @@ class FeishuNotifier:
                 {"tag": "div", "text": {"tag": "lark_md", "content": price_line}})
 
         if post.photo_url:
-            elements.append({"tag": "img", "img_url": post.photo_url})
+            # 用 lark_md 嵌入远程图片，避免必须先上传拿 img_key
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"![商品图]({post.photo_url})",
+                },
+            })
 
         if post.link:
             elements.append({
@@ -99,15 +106,16 @@ class FeishuNotifier:
                 }],
             })
 
+        # interactive 卡片：card 内容必须 JSON 字符串化后放 content 字段
+        card_body = {
+            "header": {
+                "title": {"tag": "plain_text", "content": "zzzdm 精选"},
+            },
+            "elements": elements,
+        }
         return {
             "msg_type": "interactive",
-            "card": {
-                "header": {
-                    "title": {"tag": "plain_text", "content": "zzzdm 精选"},
-                    "template": "blue",
-                },
-                "elements": elements,
-            },
+            "content": json.dumps(card_body, ensure_ascii=False),
         }
 
     # ---- 发送 ----
@@ -118,7 +126,10 @@ class FeishuNotifier:
         if not token:
             return False, "无有效 tenant_access_token"
         url = SEND_URL.format(rid_type=receive_id_type)
-        data = json.dumps(payload).encode("utf-8")
+        # 新 API 模式：receive_id 必须放 body
+        body = dict(payload)
+        body["receive_id"] = receive_id
+        data = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
             url, data=data,
             headers={
